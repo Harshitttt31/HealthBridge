@@ -15,7 +15,7 @@ export default function Home() {
   }, [auth, loading, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">
+    <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
       Loading HealthBridge…
     </div>
   );

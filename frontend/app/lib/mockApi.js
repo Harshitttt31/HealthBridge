@@ -4,12 +4,13 @@
 // See contracts.md for the locked response shapes.
 
 // --- Demo users (will be seeded in SQLite by the real backend) ---
-// role: 'hr' uploads HRMS claims; 'employer' uploads AHC health-checks.
+// role 'hr'       — a company's HR; uploads HRMS claims and views the dashboard.
+// role 'provider' — a health-check provider; uploads AHC reports for that company.
 const DEMO_USERS = [
   { username: "hr@acme", password: "demo123", role: "hr", company_id: "ACME" },
-  { username: "employer@acme", password: "demo123", role: "employer", company_id: "ACME" },
+  { username: "provider@acme", password: "demo123", role: "provider", company_id: "ACME" },
   { username: "hr@globex", password: "demo123", role: "hr", company_id: "GLOBEX" },
-  { username: "employer@globex", password: "demo123", role: "employer", company_id: "GLOBEX" },
+  { username: "provider@globex", password: "demo123", role: "provider", company_id: "GLOBEX" },
 ];
 
 // Simulate network latency so the UI's loading states are exercised.

@@ -13,16 +13,17 @@ Response:
 ```json
 {
   "token": "<JWT string>",
-  "role": "hr | employer",
+  "role": "hr | provider",
   "company_id": "ACME",
   "username": "hr@acme"
 }
 ```
 The real token is a signed JWT carrying `{ user_id, role, company_id }`.
-Role determines landing page: `hr` → `/upload/hrms`, `employer` → `/upload/ahc`.
+Role determines landing page: `hr` → `/dashboard`, `provider` → `/upload/ahc`.
+HR also has access to `/upload/hrms`; only HR sees the dashboard.
 
 ## POST /upload/hrms  (role: hr)   — TODO Phase B
-## POST /upload/ahc   (role: employer) — TODO Phase B
+## POST /upload/ahc   (role: provider) — TODO Phase B
 Multipart file upload. Returns validation result + de-identified row count.
 
 ## POST /process  (either role) — TODO Phase B
