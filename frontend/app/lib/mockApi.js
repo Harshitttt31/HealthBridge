@@ -7,10 +7,10 @@
 // role 'hr'       — a company's HR; uploads HRMS claims and views the dashboard.
 // role 'provider' — a health-check provider; uploads AHC reports for that company.
 const DEMO_USERS = [
-  { username: "hr@acme", password: "demo123", role: "hr", company_id: "ACME" },
-  { username: "provider@acme", password: "demo123", role: "provider", company_id: "ACME" },
-  { username: "hr@globex", password: "demo123", role: "hr", company_id: "GLOBEX" },
-  { username: "provider@globex", password: "demo123", role: "provider", company_id: "GLOBEX" },
+  { username: "hr@aurora", password: "demo123", role: "hr", company_id: "AURT" },
+  { username: "provider@aurora", password: "demo123", role: "provider", company_id: "AURT" },
+  { username: "hr@bluepeak", password: "demo123", role: "hr", company_id: "BLPK" },
+  { username: "provider@bluepeak", password: "demo123", role: "provider", company_id: "BLPK" },
 ];
 
 // Simulate network latency so the UI's loading states are exercised.
@@ -43,3 +43,18 @@ export const DEMO_CREDENTIALS = DEMO_USERS.map(({ username, password, role }) =>
   password,
   role,
 }));
+
+// GET /results/groups — cohort Group Health Index results for a company (k>=20).
+// Backed for now by a Next.js route handler that reads the pipeline's JSON output.
+export async function getGroups(companyId) {
+  const res = await fetch(`/api/results/groups?company=${encodeURIComponent(companyId)}`);
+  if (!res.ok) throw new Error("Failed to load group results");
+  return res.json(); // { cohorts: [...] }
+}
+
+// GET /results/summary — company-level rollup (still group-aggregated).
+export async function getSummary(companyId) {
+  const res = await fetch(`/api/results/summary?company=${encodeURIComponent(companyId)}`);
+  if (!res.ok) throw new Error("Failed to load summary");
+  return res.json(); // { summary: {...} }
+}

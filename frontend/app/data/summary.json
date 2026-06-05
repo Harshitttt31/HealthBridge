@@ -1,0 +1,84 @@
+{
+  "companies": [
+    {
+      "company_id": "AURT",
+      "company_name": "Aurora Tech",
+      "cohort_count": 118,
+      "employees_covered": 12500,
+      "avg_health_score": 911.9,
+      "avg_cost_per_head_inr": 33570,
+      "score_axis": 650,
+      "cost_axis": 28823
+    },
+    {
+      "company_id": "BLPK",
+      "company_name": "BluePeak Industries",
+      "cohort_count": 122,
+      "employees_covered": 12500,
+      "avg_health_score": 914.1,
+      "avg_cost_per_head_inr": 35120,
+      "score_axis": 650,
+      "cost_axis": 29821
+    },
+    {
+      "company_id": "CATL",
+      "company_name": "Catalyst Labs",
+      "cohort_count": 81,
+      "employees_covered": 12500,
+      "avg_health_score": 913.1,
+      "avg_cost_per_head_inr": 33177,
+      "score_axis": 650,
+      "cost_axis": 29481
+    },
+    {
+      "company_id": "DELT",
+      "company_name": "Delta Logistics",
+      "cohort_count": 144,
+      "employees_covered": 12500,
+      "avg_health_score": 912.0,
+      "avg_cost_per_head_inr": 34502,
+      "score_axis": 650,
+      "cost_axis": 30840
+    },
+    {
+      "company_id": "EVRS",
+      "company_name": "Everest Financial",
+      "cohort_count": 100,
+      "employees_covered": 12500,
+      "avg_health_score": 913.9,
+      "avg_cost_per_head_inr": 34118,
+      "score_axis": 650,
+      "cost_axis": 29371
+    },
+    {
+      "company_id": "FUSN",
+      "company_name": "Fusion Retail",
+      "cohort_count": 127,
+      "employees_covered": 12500,
+      "avg_health_score": 913.0,
+      "avg_cost_per_head_inr": 36614,
+      "score_axis": 650,
+      "cost_axis": 35298
+    },
+    {
+      "company_id": "HRZN",
+      "company_name": "Horizon Health",
+      "cohort_count": 94,
+      "employees_covered": 12500,
+      "avg_health_score": 913.6,
+      "avg_cost_per_head_inr": 34557,
+      "score_axis": 650,
+      "cost_axis": 31550
+    },
+    {
+      "company_id": "IRON",
+      "company_name": "Ironclad Mfg",
+      "cohort_count": 86,
+      "employees_covered": 12500,
+      "avg_health_score": 913.5,
+      "avg_cost_per_head_inr": 35110,
+      "score_axis": 650,
+      "cost_axis": 33126
+    }
+  ]
+}
