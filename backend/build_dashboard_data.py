@@ -22,18 +22,13 @@ import time
 import pandas as pd
 
 from app.pipeline import (
-    assign_company_id, step1_deidentify, step2_noise, step3_tokenize,
-    aggregate_hrms_to_employee, step4_combine,
-    AHC_IDENTIFIERS, HRMS_IDENTIFIERS, COMPANY_NAMES,
+    reconcile_company_id, build_company_names, step1_deidentify, step2_noise,
+    step3_tokenize, aggregate_hrms_to_employee, step4_combine, step5_release,
+    AHC_IDENTIFIERS, HRMS_IDENTIFIERS, AHC_NOISE_COLS, HRMS_NOISE_COLS,
 )
 from app.scoring.health_index import score_dataframe
 from app.grouping.mondrian import mondrian, age_band
 from app.aggregate import aggregate_company
-
-AHC_NOISE_COLS = ["hba1c_percent", "systolic_bp_mmhg", "diastolic_bp_mmhg",
-                  "fbs_mg_dl", "ldl_mg_dl"]
-HRMS_NOISE_COLS = ["insurance_claim_opd_inr", "insurance_claim_ipd_inr",
-                   "absenteeism_percent_per_month"]
 
 
 def log(msg: str):
@@ -46,7 +41,7 @@ def run(ahc_path: str, hrms_path: str, out_dir: str):
     # --- AHC: load, assign company, de-identify, noise, score, tokenize ---
     log("Loading AHC…")
     ahc = pd.read_excel(ahc_path)
-    ahc["company_id"] = assign_company_id(ahc["employee_id"])
+    ahc = reconcile_company_id(ahc)
     ahc = step1_deidentify(ahc, AHC_IDENTIFIERS)
     ahc = step2_noise(ahc, AHC_NOISE_COLS)
     log(f"Scoring {len(ahc):,} AHC rows…")
@@ -60,7 +55,8 @@ def run(ahc_path: str, hrms_path: str, out_dir: str):
     # --- HRMS: load (grouped header), assign company, de-identify, noise, tokenize, aggregate ---
     log("Loading HRMS…")
     hrms = pd.read_excel(hrms_path, header=1)
-    hrms["company_id"] = assign_company_id(hrms["employee_id"])
+    hrms = reconcile_company_id(hrms)
+    company_names = build_company_names(hrms)   # {company_id: display name}
     hrms = step1_deidentify(hrms, HRMS_IDENTIFIERS)
     hrms = step2_noise(hrms, HRMS_NOISE_COLS)
     hrms = step3_tokenize(hrms)
@@ -80,7 +76,8 @@ def run(ahc_path: str, hrms_path: str, out_dir: str):
     summaries = []
     for company_id, comp_df in combined.groupby("company_id"):
         cohorts = mondrian(comp_df)
-        payload = aggregate_company(cohorts, company_id, COMPANY_NAMES.get(company_id, company_id))
+        payload = aggregate_company(cohorts, company_id, company_names.get(company_id, company_id))
+        payload = step5_release(payload)   # k>=20 release gate (DP noise off by default)
         all_cohorts.extend(payload["cohorts"])
         summaries.append(payload["summary"])
         n_min = min(len(c) for c in cohorts)
