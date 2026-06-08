@@ -84,6 +84,12 @@ export default function UploadWorkspace({
     }
   }
 
+  // The company key arrives under any of these aliases; the backend reconciles
+  // them all to company_id. The real AHC/HRMS files use CUG.
+  const COMPANY_KEY_ALIASES = ["company_id", "CUG", "companyID", companyKey];
+  const headerHasCompanyKey =
+    header && COMPANY_KEY_ALIASES.some((a) => a && header.includes(a));
+
   // Validation status per required column (only meaningful when we parsed a header).
   const columnStatus =
     header &&
@@ -91,11 +97,10 @@ export default function UploadWorkspace({
       col,
       present:
         header.includes(col) ||
-        (companyKey && col === "company_id" && header.includes(companyKey)),
+        (col === "company_id" && headerHasCompanyKey),
     }));
 
-  const hasCompanyKey =
-    header && companyKey ? header.includes(companyKey) : null;
+  const hasCompanyKey = header ? headerHasCompanyKey : null;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">

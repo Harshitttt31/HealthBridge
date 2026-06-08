@@ -28,7 +28,7 @@ export default function HRMSUploadPage() {
         kind="hrms"
         title="HRMS Claims Upload"
         description="Upload your HRMS claims export (one row per claim). Identifiers are stripped and IDs tokenised before any analysis."
-        companyKey="companyID"
+        companyKey="CUG"
         requiredColumns={REQUIRED_COLUMNS}
       />
     </RequireRole>
