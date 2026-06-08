@@ -22,9 +22,10 @@ const REQUIRED_COLUMNS = [
 
 export default function AHCUploadPage() {
   return (
-    <RequireRole role="provider">
+    <RequireRole role="employer">
       <Header />
       <UploadWorkspace
+        kind="ahc"
         title="AHC Health-Check Upload"
         description="Provider workspace. Upload the annual health-check export (one row per employee). Identifiers are stripped and IDs tokenised before any analysis."
         companyKey="CUG"

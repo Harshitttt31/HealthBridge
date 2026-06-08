@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { login as apiLogin } from "./mockApi";
+import { login as apiLogin } from "./api";
 
 const STORAGE_KEY = "healthbridge.auth";
 
@@ -24,8 +24,8 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  async function signIn(username, password) {
-    const session = await apiLogin(username, password);
+  async function signIn(email, password) {
+    const session = await apiLogin(email, password);
     setAuth(session);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     return session;
@@ -52,9 +52,9 @@ export function useAuth() {
 }
 
 // Where each role lands after login.
-// HR manages HRMS data + dashboard; providers upload AHC reports.
+// HR manages HRMS data + dashboard; employers (health-check providers) upload AHC reports.
 export function homePathForRole(role) {
   if (role === "hr") return "/dashboard";
-  if (role === "provider") return "/upload/ahc";
+  if (role === "employer") return "/upload/ahc";
   return "/login";
 }

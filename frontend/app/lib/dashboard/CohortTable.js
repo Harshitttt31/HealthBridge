@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BAND_COLORS, QUADRANT_META, inr } from "../format";
+import { BAND_COLORS, QUADRANT_META, MIN_GROUP, inr } from "../format";
 
 const COLUMNS = [
   { key: "label", label: "Cohort", align: "left" },
@@ -23,7 +23,10 @@ export default function CohortTable({ cohorts }) {
   const [sortKey, setSortKey] = useState("group_health_score");
   const [asc, setAsc] = useState(true);
 
-  const sorted = [...cohorts].sort((a, b) => {
+  // Defensive k-floor: never list a cohort below the privacy minimum.
+  const visible = cohorts.filter((c) => (c?.n ?? 0) >= MIN_GROUP);
+
+  const sorted = [...visible].sort((a, b) => {
     const va = valueFor(a, sortKey);
     const vb = valueFor(b, sortKey);
     const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;

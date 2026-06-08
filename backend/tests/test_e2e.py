@@ -13,19 +13,17 @@ so the normal suite stays fast. Uses a throwaway DB + storage dir.
 
 from __future__ import annotations
 
-import io
 import os
 import tempfile
 import time
 
-import pandas as pd
 import pytest
 
 _RUN = os.environ.get("RUN_E2E")
 _AHC = os.environ.get(
-    "AHC_PATH", r"C:\Users\PC\Downloads\healthbridge_ahc_full_panel_100k (2).xlsx")
+    "AHC_PATH", r"C:\Users\PC\Downloads\healthbridge_ahc_full_panel_100k.csv")
 _HRMS = os.environ.get(
-    "HRMS_PATH", r"C:\Users\PC\Downloads\healthbridge_hrms_100k (2).xlsx")
+    "HRMS_PATH", r"C:\Users\PC\Downloads\healthbridge_hrms_100k.csv")
 
 pytestmark = pytest.mark.skipif(
     not (_RUN and os.path.exists(_AHC) and os.path.exists(_HRMS)),
@@ -81,17 +79,18 @@ def test_full_pipeline_100k():
     t0 = time.time()
 
     # Upload the full 100k AHC + HRMS (isolation keeps only jpm001 rows).
-    ahc_buf = io.BytesIO()
-    pd.read_excel(_AHC).to_excel(ahc_buf, index=False)
+    # Send the raw CSV bytes straight through — no Excel round-trip.
+    with open(_AHC, "rb") as f:
+        ahc_bytes = f.read()
     r = client.post("/upload/ahc", headers=employer,
-                    files={"file": ("ahc.xlsx", ahc_buf.getvalue(), "x")})
+                    files={"file": ("ahc.csv", ahc_bytes, "text/csv")})
     assert r.status_code == 200, r.text
     assert r.json()["rows_stored"] > 0
 
-    hrms_buf = io.BytesIO()
-    pd.read_excel(_HRMS, header=None).to_excel(hrms_buf, index=False, header=False)
+    with open(_HRMS, "rb") as f:
+        hrms_bytes = f.read()
     r = client.post("/upload/hrms", headers=hr,
-                    files={"file": ("hrms.xlsx", hrms_buf.getvalue(), "x")})
+                    files={"file": ("hrms.csv", hrms_bytes, "text/csv")})
     assert r.status_code == 200, r.text
 
     # Process.

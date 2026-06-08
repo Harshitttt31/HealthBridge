@@ -1,5 +1,9 @@
 // Shared formatting + band/quadrant visual metadata for the dashboard.
 
+// k-anonymity floor: the UI never displays a cohort smaller than this, mirroring
+// the backend's release gate (no result may derive from < 20 employees).
+export const MIN_GROUP = 20;
+
 export const BANDS = ["Excellent", "Good", "Fair", "Poor", "Critical"];
 
 export const BAND_COLORS = {

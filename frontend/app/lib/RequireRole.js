@@ -6,7 +6,7 @@ import { useAuth, homePathForRole } from "./auth-context";
 
 // Client-side guard. `role` is optional:
 //   - omitted: any logged-in user may view
-//   - 'hr' | 'provider': only that role; others are bounced to their own home.
+//   - 'hr' | 'employer': only that role; others are bounced to their own home.
 // Enforces invariant FR-01 in the UI (HR can't reach AHC, Employer can't reach HRMS).
 // The real backend enforces this again server-side via the JWT.
 export default function RequireRole({ role, children }) {

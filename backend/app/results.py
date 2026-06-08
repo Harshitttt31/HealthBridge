@@ -9,6 +9,7 @@ response can ever derive from fewer than 20 employees or cross a company boundar
 
 from __future__ import annotations
 
+import numpy as np
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/results", tags=["results"])
 
 MIN_GROUP = 20
 BANDS = ["Excellent", "Good", "Fair", "Poor", "Critical"]
+SCORE_AXIS = 650  # health-axis split (mirrors aggregate.aggregate_company)
 
 
 def _cohorts_for(company_id: str, session: Session) -> list[dict]:
@@ -61,7 +63,8 @@ def results_summary(user: CurrentUser = Depends(get_current_user),
     }
     if not cohorts or total == 0:
         return {**base, "avg_health_score": 0, "avg_cost_per_head_inr": 0,
-                "band_distribution": {b: 0.0 for b in BANDS}, "quadrants": {}}
+                "band_distribution": {b: 0.0 for b in BANDS}, "quadrants": {},
+                "score_axis": SCORE_AXIS, "cost_axis": 0}
 
     # Employee-weighted rollups across cohorts.
     avg_score = sum(c["group_health_score"] * c["n"] for c in cohorts) / total
@@ -78,10 +81,16 @@ def results_summary(user: CurrentUser = Depends(get_current_user),
     for c in cohorts:
         quadrants[c.get("quadrant", "?")] = quadrants.get(c.get("quadrant", "?"), 0) + 1
 
+    # Quadrant axes for the dashboard scatter: fixed health split + median cost.
+    costs = [c.get("cost_per_head_inr", 0) for c in cohorts]
+    cost_axis = round(float(np.median(costs))) if costs else 0
+
     return {
         **base,
         "avg_health_score": round(avg_score, 1),
         "avg_cost_per_head_inr": round(avg_cost),
         "band_distribution": band_dist,
         "quadrants": quadrants,
+        "score_axis": SCORE_AXIS,
+        "cost_axis": cost_axis,
     }

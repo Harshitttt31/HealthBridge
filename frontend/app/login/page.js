@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, homePathForRole } from "../lib/auth-context";
-import { DEMO_CREDENTIALS } from "../lib/mockApi";
+import { DEMO_CREDENTIALS } from "../lib/api";
 import { Wordmark } from "../lib/Logo";
 
 export default function LoginPage() {
   const { auth, loading, signIn } = useAuth();
   const router = useRouter();
 
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +24,7 @@ export default function LoginPage() {
     setError("");
     setSubmitting(true);
     try {
-      const session = await signIn(username.trim(), password);
+      const session = await signIn(email.trim(), password);
       router.replace(homePathForRole(session.role));
     } catch (err) {
       setError(err.message || "Login failed");
@@ -34,12 +34,12 @@ export default function LoginPage() {
   }
 
   function fillDemo(cred) {
-    setUsername(cred.username);
+    setEmail(cred.email);
     setPassword(cred.password);
     setError("");
   }
 
-  const roleLabel = (r) => (r === "hr" ? "HR" : "Provider");
+  const roleLabel = (r) => (r === "hr" ? "HR" : "Employer");
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-12">
@@ -85,19 +85,19 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <label
-                htmlFor="username"
+                htmlFor="email"
                 className="mb-1 block text-sm font-medium text-slate-700"
               >
-                Username
+                Email
               </label>
               <input
-                id="username"
+                id="email"
                 type="text"
                 autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="input"
-                placeholder="hr@acme"
+                placeholder="hr@jpm001.demo"
                 required
               />
             </div>
@@ -135,17 +135,17 @@ export default function LoginPage() {
           {/* Demo helper — remove once the real backend is wired in. */}
           <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-4">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-              Demo accounts (password: demo123)
+              Demo accounts (password: demo1234)
             </p>
             <div className="grid grid-cols-1 gap-1">
               {DEMO_CREDENTIALS.map((c) => (
                 <button
-                  key={c.username}
+                  key={c.email}
                   type="button"
                   onClick={() => fillDemo(c)}
                   className="flex items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-white"
                 >
-                  <span className="font-mono text-slate-700">{c.username}</span>
+                  <span className="font-mono text-slate-700">{c.email}</span>
                   <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
                     {roleLabel(c.role)}
                   </span>

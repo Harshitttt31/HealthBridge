@@ -1,7 +1,7 @@
 """Shared fixtures for the invariant suite.
 
 Small synthetic AHC/HRMS frames that mirror the real schema's privacy-relevant
-columns, so the privacy tests run without touching the 100k Excel files.
+columns, so the privacy tests run without touching the 100k CSV files.
 """
 
 from __future__ import annotations

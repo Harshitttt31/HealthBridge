@@ -2,31 +2,42 @@
 
 import { useRef, useState } from "react";
 
-// A drag-drop upload panel with client-side schema feedback.
-// In Phase A this only inspects the file locally (name, size, header row).
-// Later, `onUpload` will POST the file to the real backend endpoint.
+import { useAuth } from "./auth-context";
+import { uploadFile } from "./api";
+
+// A drag-drop upload panel that POSTs to the real backend.
+// The client header peek (CSV only) is a best-effort hint; the backend performs
+// the authoritative validation, isolation, and de-identification on upload.
 //
 // props:
+//   kind                — "ahc" | "hrms" (which backend endpoint to hit)
 //   title, description  — page copy
 //   accept              — file input accept string
 //   requiredColumns     — string[] the dataset must contain (for validation hints)
 //   companyKey          — the source column that maps to company_id (CUG | companyID)
 export default function UploadWorkspace({
+  kind,
   title,
   description,
   accept = ".csv,.xlsx",
   requiredColumns = [],
   companyKey,
 }) {
+  const { auth } = useAuth();
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [header, setHeader] = useState(null); // parsed column names (CSV only, best-effort)
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null); // backend success payload
+  const [validation, setValidation] = useState(null); // backend 422 detail
 
   function pickFile(f) {
     setError("");
     setHeader(null);
+    setResult(null);
+    setValidation(null);
     if (!f) return;
     const ok = /\.(csv|xlsx)$/i.test(f.name);
     if (!ok) {
@@ -50,6 +61,27 @@ export default function UploadWorkspace({
     e.preventDefault();
     setDragging(false);
     pickFile(e.dataTransfer.files?.[0]);
+  }
+
+  async function handleUpload() {
+    if (!file || !auth?.token) return;
+    setError("");
+    setResult(null);
+    setValidation(null);
+    setSubmitting(true);
+    try {
+      const payload = await uploadFile(kind, file, auth.token);
+      setResult(payload);
+    } catch (err) {
+      // Schema failures arrive as a structured 422 detail; everything else is
+      // a plain message (bad file, no rows for this company, auth, network).
+      if (err.detail && typeof err.detail === "object") {
+        setValidation(err.detail);
+      }
+      setError(err.message || "Upload failed");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // Validation status per required column (only meaningful when we parsed a header).
@@ -142,13 +174,72 @@ export default function UploadWorkspace({
 
       <button
         type="button"
-        disabled={!file}
-        // TODO: POST to /upload/{ahc|hrms}, then enable /process.
-        onClick={() => alert("Upload wiring comes in Phase B (backend).")}
+        disabled={!file || submitting}
+        onClick={handleUpload}
         className="btn-primary mt-6"
       >
-        Upload &amp; validate
+        {submitting ? "Uploading…" : "Upload & validate"}
       </button>
+
+      {/* Backend validation failure (422): show the authoritative detail. */}
+      {validation && (
+        <div className="card mt-6 border-red-200 bg-red-50/60 p-4">
+          <p className="mb-2 text-sm font-medium text-red-800">
+            The backend rejected this file
+          </p>
+          {validation.missing_required?.length > 0 && (
+            <p className="text-sm text-red-700">
+              Missing required column(s):{" "}
+              <span className="font-mono text-xs">
+                {validation.missing_required.join(", ")}
+              </span>
+            </p>
+          )}
+          {validation.company_ids?.length > 0 && (
+            <p className="mt-1 text-xs text-red-700">
+              Companies found in file: {validation.company_ids.join(", ")}
+            </p>
+          )}
+          {validation.message && (
+            <p className="mt-2 text-xs text-red-600">{validation.message}</p>
+          )}
+        </div>
+      )}
+
+      {/* Plain (non-validation) error: bad file type, no rows, auth, network. */}
+      {error && !validation && (
+        <p className="mt-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
+      {/* Success: rows stored, isolation drops, and any soft warnings. */}
+      {result && (
+        <div className="card mt-6 border-green-200 bg-green-50/60 p-4">
+          <p className="mb-2 text-sm font-medium text-green-800">
+            Upload accepted — {result.rows_stored.toLocaleString()} row(s) stored
+            for {result.company_id}
+          </p>
+          {result.rows_dropped_other_company > 0 && (
+            <p className="text-xs text-slate-600">
+              {result.rows_dropped_other_company.toLocaleString()} row(s) for other
+              companies were dropped (isolation).
+            </p>
+          )}
+          {result.warnings?.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-amber-700">
+              {result.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            Identifiers were stripped and IDs tokenised before storage. Once both
+            AHC and HRMS are uploaded, run processing to build the Group Health
+            Index.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

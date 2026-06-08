@@ -25,6 +25,7 @@ export default function HRMSUploadPage() {
     <RequireRole role="hr">
       <Header />
       <UploadWorkspace
+        kind="hrms"
         title="HRMS Claims Upload"
         description="Upload your HRMS claims export (one row per claim). Identifiers are stripped and IDs tokenised before any analysis."
         companyKey="companyID"

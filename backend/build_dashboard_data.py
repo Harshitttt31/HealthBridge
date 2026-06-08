@@ -1,14 +1,14 @@
-"""Offline orchestrator: read the AHC + HRMS Excel files, run the full privacy
-pipeline + scoring + Mondrian grouping + aggregation, and write group-level JSON
-for the dashboard.
+"""Offline orchestrator: read the AHC + HRMS files (CSV or XLSX), run the full
+privacy pipeline + scoring + Mondrian grouping + aggregation, and write
+group-level JSON for the dashboard.
 
 This is the same logic that will later sit behind the FastAPI /process endpoint.
 The sensitive token-linked table stays in memory; only group aggregates are written.
 
 Usage:
     python build_dashboard_data.py \
-        --ahc  "C:\\path\\ahc.xlsx" \
-        --hrms "C:\\path\\hrms.xlsx" \
+        --ahc  "C:\\path\\ahc.csv" \
+        --hrms "C:\\path\\hrms.csv" \
         --out  "..\\frontend\\app\\data"
 """
 
@@ -19,13 +19,13 @@ import json
 import os
 import time
 
-import pandas as pd
-
 from app.pipeline import (
     reconcile_company_id, build_company_names, step1_deidentify, step2_noise,
     step3_tokenize, aggregate_hrms_to_employee, step4_combine, step5_release,
     AHC_IDENTIFIERS, HRMS_IDENTIFIERS, AHC_NOISE_COLS, HRMS_NOISE_COLS,
 )
+from app.ingestion import load_dataframe
+from app.models import UploadKind
 from app.scoring.health_index import score_dataframe
 from app.grouping.mondrian import mondrian, age_band
 from app.aggregate import aggregate_company
@@ -40,7 +40,8 @@ def run(ahc_path: str, hrms_path: str, out_dir: str):
 
     # --- AHC: load, assign company, de-identify, noise, score, tokenize ---
     log("Loading AHC…")
-    ahc = pd.read_excel(ahc_path)
+    # CSV or XLSX; HRMS's grouped two-row header is auto-detected by the loader.
+    ahc = load_dataframe(ahc_path, ahc_path, UploadKind.ahc)
     ahc = reconcile_company_id(ahc)
     ahc = step1_deidentify(ahc, AHC_IDENTIFIERS)
     ahc = step2_noise(ahc, AHC_NOISE_COLS)
@@ -52,9 +53,9 @@ def run(ahc_path: str, hrms_path: str, out_dir: str):
                [c for c in ahc.columns if c.startswith("domain__")]
     ahc = ahc[ahc_keep]
 
-    # --- HRMS: load (grouped header), assign company, de-identify, noise, tokenize, aggregate ---
+    # --- HRMS: load, assign company, de-identify, noise, tokenize, aggregate ---
     log("Loading HRMS…")
-    hrms = pd.read_excel(hrms_path, header=1)
+    hrms = load_dataframe(hrms_path, hrms_path, UploadKind.hrms)
     hrms = reconcile_company_id(hrms)
     company_names = build_company_names(hrms)   # {company_id: display name}
     hrms = step1_deidentify(hrms, HRMS_IDENTIFIERS)
