@@ -1,117 +1,126 @@
-"""Deterministic 0-1000 Health Index engine (BRD §7).
+"""Deduction-model Health Index engine (BRD §7, deduction refactor).
 
-Pure, vectorized over a DataFrame of AHC biomarkers. No ML, no training.
-Driven by weights.csv + reference_ranges.py so the model is calibratable
-without touching this code.
+Every employee starts at 1000. Each clinical domain subtracts up to its
+MAX_DEDUCTION allowance, scaled by a penalty fraction in [0, 1] from a validated
+formula (formulas.py). Chronic disease subtracts a Charlson-weighted penalty.
+A critical-value floor then caps severe cases, and the score is clamped to
+[0, 1000].
+
+Interpretable by construction: "started at 1000, lost 119 for uncontrolled
+diabetes, 171 for chronic burden, ...". The per-domain allowances sum to 1000.
+
+Public API:
+  - compute_health_index(row) -> dict   (per-employee detail)
+  - score_dataframe(df) -> DataFrame     (vectorised wrapper used by the pipeline)
+
+weights.csv and the old build-up model are deprecated (kept for reference).
 """
 
 from __future__ import annotations
 
-import os
-import numpy as np
 import pandas as pd
 
-from .reference_ranges import REFERENCE_RANGES, CRITICAL_RULES, CRITICAL_CAP
+from . import formulas
+from .deduction_config import (
+    BAND_LABELS, CRITICAL, CRITICAL_CAP, MAX_DEDUCTION,
+)
 
-_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "weights.csv")
+DOMAIN_FUNCS = {
+    "cardiovascular": formulas.cardiovascular,
+    "glycaemic": formulas.glycaemic,
+    "chronic_disease": formulas.chronic_burden,
+    "metabolic_syndrome": formulas.metabolic_syndrome,
+    "renal": formulas.renal,            # also returns egfr
+    "haematology": formulas.haematology,
+    "hepatic": formulas.hepatic,
+    "fitness": formulas.fitness,
+    "thyroid": formulas.thyroid,
+    "inflammatory": formulas.inflammatory,
+    "nutrition": formulas.nutrition,
+}
 
 
-def load_weights() -> pd.DataFrame:
-    """weights.csv -> DataFrame[column, domain, weight_pct, direction]."""
-    w = pd.read_csv(_WEIGHTS_PATH)
-    w = w[w["weight_pct"] > 0].reset_index(drop=True)
-    return w
+def _breaches_critical(row, egfr) -> bool:
+    """True if any critical threshold is breached (egfr is the CKD-EPI value)."""
+    for col, (op, thr) in CRITICAL.items():
+        val = egfr if col == "egfr" else formulas._num(row, col)
+        if formulas._isnan(val):
+            continue
+        if op == ">" and val > thr:
+            return True
+        if op == "<" and val < thr:
+            return True
+    return False
 
 
-def _subscore(values: np.ndarray, direction: str, bounds) -> np.ndarray:
-    """0-100 sub-score via piecewise-linear interpolation (100 optimal -> 0 critical)."""
-    hard_low, soft_low, soft_high, hard_high = bounds
-    v = values.astype(float)
+def compute_health_index(row) -> dict:
+    """Score one employee row (Series or dict) under the deduction model."""
+    score = 1000.0
+    deductions: dict[str, float] = {}
+    fractions: dict[str, float] = {}
+    egfr = None
 
-    if direction == "up_bad":
-        # Full score up to soft_high, 0 at hard_high.
-        xp = [soft_high, hard_high]
-        fp = [100.0, 0.0]
-    elif direction == "down_bad":
-        # 0 at hard_low, full score from soft_low up.
-        xp = [hard_low, soft_low]
-        fp = [0.0, 100.0]
-    else:  # band
-        xp = [hard_low, soft_low, soft_high, hard_high]
-        fp = [0.0, 100.0, 100.0, 0.0]
+    for domain, fn in DOMAIN_FUNCS.items():
+        result = fn(row)
+        if isinstance(result, dict):
+            frac = result.get("fraction", 0.0)
+            if "egfr" in result:
+                egfr = result["egfr"]
+        else:
+            frac = result
+        frac = max(0.0, min(1.0, frac))
+        ded = MAX_DEDUCTION[domain] * frac
+        deductions[domain] = round(ded, 1)
+        fractions[domain] = round(frac, 3)
+        score -= ded
 
-    # np.interp clamps to the end values outside [xp[0], xp[-1]] — exactly the
-    # "full points below optimal / zero past critical" behaviour we want.
-    out = np.interp(v, xp, fp)
-    # NaN inputs -> neutral 75 (don't reward or harshly punish missing tests).
-    out = np.where(np.isnan(v), 75.0, out)
-    return np.clip(out, 0.0, 100.0)
+    score = max(0.0, min(1000.0, score))
+
+    critical = _breaches_critical(row, egfr)
+    if critical:
+        score = min(score, CRITICAL_CAP)
+
+    band = next(lbl for thr, lbl in BAND_LABELS if score >= thr)
+    top_drivers = sorted(deductions.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    return {
+        "health_index": round(score),
+        "band": band,
+        "critical_flag": bool(critical),
+        "deductions": deductions,
+        "penalty_fractions": fractions,
+        "top_risk_drivers": [d for d, _ in top_drivers],
+    }
 
 
 def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Add health_index, band, and per-domain score columns to a copy of df.
+    """Add health_index, health_band, critical_flag, and per-domain columns.
 
-    Returns a new DataFrame with:
-      - health_index (0-1000)
-      - band (Excellent/Good/Fair/Poor/Critical)
-      - domain__<Domain> (0-100) for each domain
-      - subscores kept internally for top-risk-driver analysis downstream
+    domain__<name> is the domain's *health* score 0-100 (100 = no penalty,
+    0 = full penalty), so it keeps the "higher is better" semantics the
+    aggregation layer expects for weakest-domain reporting.
     """
-    weights = load_weights()
     out = df.copy()
+    domains = list(MAX_DEDUCTION.keys())
 
-    sub = pd.DataFrame(index=df.index)        # 0-100 subscores
-    weighted = pd.DataFrame(index=df.index)   # subscore/100 * weight_pct
+    if len(df) == 0:
+        out["health_index"] = pd.Series(dtype="int64")
+        out["health_band"] = pd.Series(dtype="object")
+        out["critical_flag"] = pd.Series(dtype="bool")
+        for d in domains:
+            out[f"domain__{d}"] = pd.Series(dtype="float64")
+        return out
 
-    for _, row in weights.iterrows():
-        col, direction, wpct = row["column"], row["direction"], float(row["weight_pct"])
-        if col not in df.columns or col not in REFERENCE_RANGES:
-            continue
-        s = _subscore(df[col].to_numpy(), direction, REFERENCE_RANGES[col])
-        sub[col] = s
-        weighted[col] = (s / 100.0) * wpct
+    results = [compute_health_index(row) for _, row in df.iterrows()]
 
-    # index_raw = Σ(subscore/100 * weight_pct) * 10  -> 0..1000
-    index_raw = weighted.sum(axis=1) * 10.0
-
-    # Critical override: cap severe cases (BRD §7.2.3).
-    critical = pd.Series(False, index=df.index)
-    for col, (op, thr) in CRITICAL_RULES.items():
-        if col not in df.columns:
-            continue
-        vals = df[col]
-        hit = vals.gt(thr) if op == "gt" else vals.lt(thr)
-        critical |= hit.fillna(False)
-    index_capped = np.where(critical, np.minimum(index_raw, CRITICAL_CAP), index_raw)
-
-    out["health_index"] = np.round(np.clip(index_capped, 0, 1000)).astype(int)
-    out["critical_flag"] = critical.to_numpy()
-    # Named health_band to avoid colliding with HRMS's job `band` (L1-L7),
-    # which is a grouping quasi-identifier and must survive the join intact.
-    out["health_band"] = out["health_index"].map(band_for_score)
-
-    # Domain scores: weighted mean of member subscores (0-100).
-    for domain, grp in weights.groupby("domain"):
-        cols = [c for c in grp["column"] if c in sub.columns]
-        if not cols:
-            continue
-        w = grp.set_index("column").loc[cols, "weight_pct"].to_numpy()
-        dom = (sub[cols].to_numpy() * w).sum(axis=1) / w.sum()
-        out[f"domain__{domain}"] = np.round(dom, 1)
-
-    # Stash subscores frame for downstream "top risk drivers" (not persisted).
-    out.attrs["subscores"] = sub
-    out.attrs["param_weights"] = weights.set_index("column")["weight_pct"].to_dict()
+    out["health_index"] = [r["health_index"] for r in results]
+    out["health_band"] = [r["band"] for r in results]
+    out["critical_flag"] = [r["critical_flag"] for r in results]
+    for d in domains:
+        out[f"domain__{d}"] = [round((1.0 - r["penalty_fractions"][d]) * 100.0, 1)
+                               for r in results]
     return out
 
 
 def band_for_score(score: float) -> str:
-    if score >= 800:
-        return "Excellent"
-    if score >= 650:
-        return "Good"
-    if score >= 500:
-        return "Fair"
-    if score >= 350:
-        return "Poor"
-    return "Critical"
+    """Score -> band label (kept for callers that mapped scores directly)."""
+    return next(lbl for thr, lbl in BAND_LABELS if score >= thr)
