@@ -20,10 +20,10 @@ def _utcnow() -> datetime:
 
 
 class Role(str, Enum):
-    """The two BRD roles (FR-01). HR uploads HRMS; Employer uploads AHC."""
+    """The two roles (FR-01). HR uploads HRMS; Health Provider uploads AHC for all companies."""
 
     hr = "hr"
-    employer = "employer"
+    provider = "provider"
 
 
 class UploadKind(str, Enum):

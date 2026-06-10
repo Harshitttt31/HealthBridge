@@ -4,6 +4,10 @@ Parse an uploaded AHC or HRMS file (CSV or XLSX), reconcile the company key to
 canonical `company_id`, and validate the schema. Problems are *reported*, never
 silently dropped (Risk §15: "unmatched records reported, not silently dropped").
 
+Tenant isolation for HRMS uploads is enforced here via check_tenant_isolation():
+a file whose CUG set is not exactly {tenant} is rejected as an authorization
+violation — no partial ingestion, no silent row-dropping.
+
 The two datasets differ structurally:
   - AHC  : single header row.
   - HRMS : a grouped banner row sits above the real header, so the true columns
@@ -20,6 +24,48 @@ import pandas as pd
 from app.models import UploadKind
 from app.pipeline import reconcile_company_id
 from app.pipeline.companies import COMPANY_ID
+
+
+@dataclass
+class TenantViolation:
+    """Raised (as a value, not an exception) when a file's CUG set ≠ {tenant}."""
+    tenant: str
+    found: list[str]   # distinct CUG values present in the file
+
+    @property
+    def foreign(self) -> list[str]:
+        return sorted(c for c in self.found if c != self.tenant)
+
+    def message(self) -> str:
+        if not self.found:
+            return "File contains no rows or no CUG column."
+        if len(self.found) > 1:
+            return (
+                f"File contains data for multiple companies ({self.found}). "
+                f"Only single-tenant files are accepted. "
+                f"Your tenant is '{self.tenant}'."
+            )
+        return (
+            f"File belongs to '{self.found[0]}', not your tenant '{self.tenant}'. "
+            "Upload rejected."
+        )
+
+
+def check_tenant_isolation(
+    df: pd.DataFrame, tenant: str
+) -> TenantViolation | None:
+    """Verify the entire file's CUG set is exactly {tenant}.
+
+    Returns None if the file is clean, or a TenantViolation describing the
+    problem. The caller decides how to surface it (log + 403, etc.).
+    Evaluates every row — no sampling.
+    """
+    if COMPANY_ID not in df.columns:
+        return TenantViolation(tenant=tenant, found=[])
+    found = sorted(map(str, df[COMPANY_ID].dropna().unique()))
+    if found == [tenant]:
+        return None
+    return TenantViolation(tenant=tenant, found=found)
 
 # Columns each dataset must have for the pipeline to run. A missing required
 # column fails validation; missing "expected" columns are warnings only.

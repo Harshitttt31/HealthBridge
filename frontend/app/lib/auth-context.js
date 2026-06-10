@@ -52,9 +52,8 @@ export function useAuth() {
 }
 
 // Where each role lands after login.
-// HR manages HRMS data + dashboard; employers (health-check providers) upload AHC reports.
 export function homePathForRole(role) {
   if (role === "hr") return "/dashboard";
-  if (role === "employer") return "/upload/ahc";
+  if (role === "provider") return "/dashboard";
   return "/login";
 }

@@ -4,15 +4,13 @@ import { useEffect, useState } from "react";
 import RequireRole from "../lib/RequireRole";
 import Header from "../lib/Header";
 import { useAuth } from "../lib/auth-context";
-import { getGroups, getSummary, processData } from "../lib/api";
+import { getGroups, getSummary, getCompanies, processData } from "../lib/api";
 import { inr, MIN_GROUP } from "../lib/format";
 import { BandLegend } from "../lib/dashboard/BandBar";
 import QuadrantChart from "../lib/dashboard/QuadrantChart";
 import CohortCard from "../lib/dashboard/CohortCard";
 import CohortTable from "../lib/dashboard/CohortTable";
 
-// Turn a /process error into something an HR user can act on.
-// 409 = one/both datasets not uploaded yet; 422 = AHC & HRMS didn't match.
 function friendlyProcessError(e) {
   if (e.status === 409) {
     return (
@@ -40,7 +38,47 @@ function StatTile({ label, value, sub }) {
   );
 }
 
-function DashboardContent() {
+function CompanySelector({ token, selectedId, onChange }) {
+  const [companies, setCompanies] = useState([]);
+
+  useEffect(() => {
+    if (!token) return;
+    getCompanies(token)
+      .then((r) => setCompanies(r.companies ?? []))
+      .catch(() => {});
+  }, [token]);
+
+  if (!companies.length) {
+    return (
+      <p className="text-sm text-slate-500">
+        No processed data available yet. Upload and process an AHC file first.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <label className="text-sm font-medium text-slate-700" htmlFor="company-select">
+        Select company
+      </label>
+      <select
+        id="company-select"
+        value={selectedId ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-ink-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+      >
+        <option value="">— choose —</option>
+        {companies.map((c) => (
+          <option key={c.company_id} value={c.company_id}>
+            {c.company_name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function DashboardContent({ companyId }) {
   const { auth } = useAuth();
   const [summary, setSummary] = useState(null);
   const [cohorts, setCohorts] = useState(null);
@@ -50,12 +88,16 @@ function DashboardContent() {
   const [processError, setProcessError] = useState("");
 
   const token = auth?.token;
+  const isProvider = auth?.role === "provider";
 
   async function load() {
     setError("");
+    setLoading(true);
     try {
-      const [s, g] = await Promise.all([getSummary(token), getGroups(token)]);
-      // Live endpoints return flat objects; company is derived from the JWT.
+      const [s, g] = await Promise.all([
+        getSummary(token, companyId),
+        getGroups(token, companyId),
+      ]);
       setSummary(s);
       setCohorts(g.cohorts ?? []);
     } catch (e) {
@@ -66,16 +108,13 @@ function DashboardContent() {
   }
 
   useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await load();
-    })();
-    return () => {
-      cancelled = true;
-    };
+    if (!token || !companyId) {
+      setLoading(false);
+      return;
+    }
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, companyId]);
 
   async function handleProcess() {
     setProcessError("");
@@ -90,6 +129,8 @@ function DashboardContent() {
     }
   }
 
+  if (!companyId) return null;
+
   if (loading) {
     return <p className="text-sm text-slate-500">Loading cohort results…</p>;
   }
@@ -101,18 +142,14 @@ function DashboardContent() {
     );
   }
 
-  // Hard k-anonymity guard in the UI: never render a cohort below the floor,
-  // even if a bad payload slipped past the backend. This is the authoritative
-  // "no drill below 20" enforcement for everything rendered downstream.
   const safeCohorts = (cohorts ?? []).filter((c) => (c?.n ?? 0) >= MIN_GROUP);
   const suppressed = (cohorts?.length ?? 0) - safeCohorts.length;
 
-  // No results yet for this company — offer to run processing.
   if (!summary?.processed || !safeCohorts.length) {
     return (
       <div className="space-y-4">
         <h1 className="text-xl font-semibold text-ink-900">
-          {summary?.company_name || auth?.company_id}
+          {summary?.company_name || companyId}
         </h1>
         <div className="card p-6">
           <p className="text-sm font-medium text-ink-900">No results yet</p>
@@ -126,18 +163,22 @@ function DashboardContent() {
               {processError}
             </p>
           )}
-          <button
-            type="button"
-            onClick={handleProcess}
-            disabled={processing}
-            className="btn-primary mt-4"
-          >
-            {processing ? "Processing…" : "Run processing"}
-          </button>
-          {processing && (
-            <p className="mt-2 text-xs text-slate-400">
-              This can take up to a minute for a full 100k-row dataset.
-            </p>
+          {!isProvider && (
+            <>
+              <button
+                type="button"
+                onClick={handleProcess}
+                disabled={processing}
+                className="btn-primary mt-4"
+              >
+                {processing ? "Processing…" : "Run processing"}
+              </button>
+              {processing && (
+                <p className="mt-2 text-xs text-slate-400">
+                  This can take up to a minute for a full 100k-row dataset.
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -175,15 +216,17 @@ function DashboardContent() {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={handleProcess}
-          disabled={processing}
-          className="btn-ghost shrink-0"
-          title="Re-run the pipeline over the latest uploads"
-        >
-          {processing ? "Processing…" : "Re-process"}
-        </button>
+        {!isProvider && (
+          <button
+            type="button"
+            onClick={handleProcess}
+            disabled={processing}
+            className="btn-ghost shrink-0"
+            title="Re-run the pipeline over the latest uploads"
+          >
+            {processing ? "Processing…" : "Re-process"}
+          </button>
+        )}
       </div>
 
       {/* KPIs */}
@@ -243,11 +286,25 @@ function DashboardContent() {
 }
 
 export default function DashboardPage() {
+  const { auth } = useAuth();
+  const isProvider = auth?.role === "provider";
+  const [selectedCompany, setSelectedCompany] = useState(null);
+
+  // HR's company comes from their JWT; providers pick from the dropdown.
+  const companyId = isProvider ? selectedCompany : auth?.company_id;
+
   return (
-    <RequireRole role="hr">
+    <RequireRole>
       <Header />
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <DashboardContent />
+      <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
+        {isProvider && (
+          <CompanySelector
+            token={auth?.token}
+            selectedId={selectedCompany}
+            onChange={setSelectedCompany}
+          />
+        )}
+        <DashboardContent companyId={companyId} />
       </main>
     </RequireRole>
   );

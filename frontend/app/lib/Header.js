@@ -15,12 +15,13 @@ export default function Header() {
     router.replace("/login");
   }
 
-  // HR uploads HRMS; employers (health-check providers) upload AHC. Only HR sees the dashboard.
   const uploadHref = auth?.role === "hr" ? "/upload/hrms" : "/upload/ahc";
-  const links = [{ href: uploadHref, label: "Upload" }];
-  if (auth?.role === "hr") links.push({ href: "/dashboard", label: "Dashboard" });
+  const links = [
+    { href: uploadHref, label: "Upload" },
+    { href: "/dashboard", label: "Dashboard" },
+  ];
 
-  const roleLabel = auth?.role === "hr" ? "HR" : "Employer";
+  const roleLabel = auth?.role === "hr" ? "HR" : auth?.role === "provider" ? "Health Provider" : "";
 
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/80 backdrop-blur">
@@ -57,7 +58,7 @@ export default function Header() {
               {auth.email}
             </span>
             <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-100">
-              {roleLabel} · {auth.company_id}
+              {roleLabel}{auth.role === "hr" ? ` · ${auth.company_id}` : ""}
             </span>
             <button onClick={handleSignOut} className="btn-ghost">
               Sign out

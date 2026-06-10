@@ -39,7 +39,7 @@ export default function LoginPage() {
     setError("");
   }
 
-  const roleLabel = (r) => (r === "hr" ? "HR" : "Employer");
+  const roleLabel = (r) => (r === "hr" ? "HR" : "Health Provider");
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-12">

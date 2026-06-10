@@ -19,7 +19,12 @@ from __future__ import annotations
 
 import math
 
-from .deduction_config import BANDS, CHARLSON, CHARLSON_CAP, band_fraction
+from .deduction_config import (
+    AMPLIFICATION_MATRIX, AMPLIFIER_CAP, ANCHOR_CONDITIONS,
+    BANDS, CHARLSON, CHARLSON_CAP,
+    DIABETES_CONTROL_MODIFIER, SYNERGY_PER_EXTRA_ANCHOR,
+    band_fraction,
+)
 
 # Inputs not present in the dataset — documented assumptions (add later):
 #   smoking status -> assumed non-smoker (TODO: capture at intake)
@@ -347,7 +352,52 @@ def nutrition(row) -> float:
     return BANDS["nutrition_status"][worst]
 
 
-# --- chronic disease: Charlson burden --------------------------------------
-def chronic_burden(row) -> float:
-    burden = sum(CHARLSON.get(tok, 0.0) for tok in _chronic_tokens(row))
-    return min(burden / CHARLSON_CAP, 1.0)
+# --- cross-domain amplifiers (Mechanism 1) ----------------------------------
+def compute_amplifiers(row) -> dict[str, float]:
+    """Return per-domain amplifier A = 1 + Σ(bonuses), capped at AMPLIFIER_CAP.
+
+    Only conditions present in the chronic_disease field contribute.  A domain
+    not in the result dict has A = 1.0 (no amplification).
+    """
+    tokens = set(_chronic_tokens(row))
+    bonus: dict[str, float] = {}
+    for condition, links in AMPLIFICATION_MATRIX.items():
+        if condition in tokens:
+            for domain, b in links.items():
+                bonus[domain] = bonus.get(domain, 0.0) + b
+    return {domain: min(1.0 + b, AMPLIFIER_CAP) for domain, b in bonus.items()}
+
+
+# --- chronic disease: complication-weighted burden (Mechanism 2) -----------
+def _diabetes_control_modifier(hba1c: float) -> float:
+    if _isnan(hba1c):
+        return 1.0  # assume well-controlled when no HbA1c available
+    for threshold, modifier in DIABETES_CONTROL_MODIFIER:
+        if hba1c < threshold:
+            return modifier
+    return DIABETES_CONTROL_MODIFIER[-1][1]
+
+
+def chronic_burden_score(row) -> float:
+    """Complication-weighted Charlson sum B with control modifier and synergy.
+
+    B = Σ[Charlson_weight × control_modifier(condition)] + synergy
+    synergy = SYNERGY_PER_EXTRA_ANCHOR × max(0, n_anchor_conditions − 1)
+
+    Engine applies: chronic_deduction = 200 × min(B / 7, 1)
+    """
+    tokens = _chronic_tokens(row)
+    hba1c = _num(row, "hba1c_percent")
+
+    burden = 0.0
+    n_anchors = 0
+    for tok in tokens:
+        weight = CHARLSON.get(tok, 0.0)
+        if tok == "Type 2 Diabetes":
+            weight *= _diabetes_control_modifier(hba1c)
+        if tok in ANCHOR_CONDITIONS:
+            n_anchors += 1
+        burden += weight
+
+    synergy = SYNERGY_PER_EXTRA_ANCHOR * max(0, n_anchors - 1)
+    return burden + synergy

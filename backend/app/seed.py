@@ -1,10 +1,10 @@
-"""Seed demo users (BRD §5) — one HR + one Employer per real company.
+"""Seed demo users — one HR per real company, plus a single Health Provider.
 
 Idempotent: existing emails are skipped, so it is safe to re-run. Credentials
 are intentionally simple for the prototype:
 
-    hr@<company_id>.demo        / demo1234   (role: hr        -> HRMS upload)
-    employer@<company_id>.demo  / demo1234   (role: employer  -> AHC upload)
+    hr@<company_id>.demo     / demo1234   (role: hr       -> HRMS upload)
+    provider@hclhealth.demo  / demo1234   (role: provider -> AHC upload for all companies)
 
 Run (from backend/):  python -m app.seed
 """
@@ -20,28 +20,42 @@ from app.pipeline import COMPANY_NAMES
 
 DEMO_PASSWORD = "demo1234"
 
+# The single Health Provider account that uploads AHC data for all companies.
+PROVIDER_EMAIL = "provider@hclhealth.demo"
+PROVIDER_COMPANY_ID = "provider"  # sentinel; provider is not scoped to one company
+
 
 def seed() -> None:
     init_db()
     created = 0
     with Session(engine) as session:
+        # One HR user per company.
         for company_id in COMPANY_NAMES:
-            for role, prefix in ((Role.hr, "hr"), (Role.employer, "employer")):
-                email = f"{prefix}@{company_id}.demo"
-                exists = session.exec(select(User).where(User.email == email)).first()
-                if exists:
-                    continue
+            email = f"hr@{company_id}.demo"
+            if not session.exec(select(User).where(User.email == email)).first():
                 session.add(User(
                     email=email,
                     hashed_password=hash_password(DEMO_PASSWORD),
-                    role=role,
+                    role=Role.hr,
                     company_id=company_id,
                 ))
                 created += 1
+
+        # Single provider account.
+        if not session.exec(select(User).where(User.email == PROVIDER_EMAIL)).first():
+            session.add(User(
+                email=PROVIDER_EMAIL,
+                hashed_password=hash_password(DEMO_PASSWORD),
+                role=Role.provider,
+                company_id=PROVIDER_COMPANY_ID,
+            ))
+            created += 1
+
         session.commit()
-    total = len(COMPANY_NAMES) * 2
-    print(f"Seed complete: {created} new users created ({total} demo users across "
-          f"{len(COMPANY_NAMES)} companies). Password for all: {DEMO_PASSWORD}")
+
+    total = len(COMPANY_NAMES) + 1
+    print(f"Seed complete: {created} new users created ({total} demo users — "
+          f"{len(COMPANY_NAMES)} HR + 1 provider). Password for all: {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ import os
 import pandas as pd
 import pytest
 
-from app.scoring.deduction_config import CRITICAL_CAP, MAX_DEDUCTION
+from app.scoring.deduction_config import CHRONIC_MAX_DEDUCTION, CRITICAL_CAP, MAX_DEDUCTION
 from app.scoring.health_index import compute_health_index, score_dataframe
 
 _HEALTHY = dict(
@@ -35,7 +35,9 @@ _COMORBID = dict(
 
 
 def test_allowances_sum_to_1000():
-    assert sum(MAX_DEDUCTION.values()) == 1000
+    # Clinical domains sum to 800; chronic burden adds a fixed 200 → total 1000.
+    assert sum(MAX_DEDUCTION.values()) == 800
+    assert sum(MAX_DEDUCTION.values()) + CHRONIC_MAX_DEDUCTION == 1000
 
 
 def test_healthy_is_near_perfect():
@@ -64,7 +66,8 @@ def test_bounds_and_missing_inputs():
     sparse = {"hba1c_percent": 9.0, "chronic_disease": "Type 2 Diabetes"}
     r = compute_health_index(sparse)
     assert 0 <= r["health_index"] <= 1000
-    assert len(r["penalty_fractions"]) == len(MAX_DEDUCTION)
+    # penalty_fractions has all clinical domains + chronic_disease
+    assert len(r["penalty_fractions"]) == len(MAX_DEDUCTION) + 1
 
 
 def test_score_dataframe_columns():

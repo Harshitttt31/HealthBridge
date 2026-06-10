@@ -1,9 +1,21 @@
-"""Deduction-model configuration for the Health Index (BRD §7, deduction refactor).
+"""Deduction-model configuration for the Health Index (BRD §7).
 
-Every employee starts at 1000. Each domain subtracts up to its MAX_DEDUCTION
-allowance, scaled by a penalty fraction in [0, 1] from that domain's clinical
-formula (see formulas.py). Chronic disease subtracts a Charlson-weighted penalty.
-A critical-value floor then caps severe cases.
+Two compounding mechanisms on top of the plain additive model:
+
+Mechanism 1 — Cross-domain amplification (measured, linked systems)
+  When an anchor condition is present it amplifies the penalty fraction of
+  clinically-linked domains that don't already take that condition as a formula
+  input (to avoid double-counting).  A = 1 + Σ(bonuses), capped at AMPLIFIER_CAP.
+  New fraction = min(1.0, base_fraction × A).  A diabetic with pristine kidneys
+  (renal fraction 0) loses nothing extra — correct.
+
+Mechanism 2 — Complication-weighted chronic burden (unmeasured systems)
+  B = Σ[Charlson_weight × control_modifier] + synergy
+  control_modifier (diabetes): HbA1c <7 → 1.0 · 7–9 → 1.3 · ≥9 → 1.6
+  synergy = 0.5 × max(0, n_anchor_conditions − 1)
+  chronic_deduction = 200 × min(B / 7, 1)
+  Captures neuropathy, retinopathy, MSK and infection risk that the 72-parameter
+  panel cannot directly measure.
 
 All thresholds live here so the model is tunable without touching engine logic.
 """
@@ -12,11 +24,11 @@ from __future__ import annotations
 
 import math
 
-# Max deduction per domain (the "weight"); these MUST sum to 1000.
+# Max deduction per clinical domain; MUST sum to 800.
+# The remaining 200 is reserved for the chronic-burden term (always separate).
 MAX_DEDUCTION = {
     "cardiovascular": 170,
     "glycaemic": 140,
-    "chronic_disease": 200,
     "metabolic_syndrome": 90,
     "renal": 90,
     "haematology": 80,
@@ -26,7 +38,10 @@ MAX_DEDUCTION = {
     "inflammatory": 30,
     "nutrition": 20,
 }
-assert sum(MAX_DEDUCTION.values()) == 1000, "domain allowances must sum to 1000"
+assert sum(MAX_DEDUCTION.values()) == 800, "clinical domain allowances must sum to 800"
+
+# Fixed allowance for the complication-weighted chronic burden term.
+CHRONIC_MAX_DEDUCTION = 200
 
 # Penalty-fraction bands. Each maps a formula output to a fraction in [0, 1].
 # List form: ordered (upper_threshold_exclusive, fraction); last entry uses inf.
@@ -51,7 +66,38 @@ CHARLSON = {
     "Hypertension": 1.5, "Hyperthyroidism": 1.5, "Obesity": 1.5,
     "Dyslipidaemia": 1.0, "Hypothyroidism": 1.0, "Anaemia": 1.0, "Hyperuricaemia": 0.5,
 }
-CHARLSON_CAP = 7.0   # burden at which the full chronic_disease allowance is deducted
+CHARLSON_CAP = 7.0  # burden at which the full chronic_disease allowance is deducted
+
+# Control modifier for complication risk (Mechanism 2).
+# HbA1c brackets → multiplier on Charlson weight for Type 2 Diabetes.
+DIABETES_CONTROL_MODIFIER = [
+    (7.0, 1.0),   # HbA1c < 7  → well-controlled
+    (9.0, 1.3),   # HbA1c 7–9 → suboptimal
+    (float("inf"), 1.6),  # HbA1c ≥ 9 → poor control
+]
+
+# Synergy bonus per additional anchor condition beyond the first.
+SYNERGY_PER_EXTRA_ANCHOR = 0.5
+
+# Cross-domain amplification matrix (Mechanism 1).
+# anchor_condition -> {domain: bonus}
+# Rule: only amplify links the domain formula does NOT already contain.
+# ASCVD takes diabetes, BP, and lipids as inputs → cardiovascular not amplified
+# for Diabetes/Hypertension/Dyslipidaemia. CKD-EPI uses only creatinine; FIB-4
+# uses only liver enzymes — neither "knows" the patient is diabetic, so legitimate.
+AMPLIFICATION_MATRIX = {
+    "Type 2 Diabetes":     {"renal": 0.40, "hepatic": 0.25},
+    "Hypertension":        {"renal": 0.30},
+    "Chronic Kidney Disease": {"cardiovascular": 0.40},
+    "Obesity":             {"hepatic": 0.25},
+    "Fatty Liver (NAFLD)": {"cardiovascular": 0.15},
+}
+
+# Anchor conditions (used for synergy count).
+ANCHOR_CONDITIONS = frozenset(AMPLIFICATION_MATRIX.keys())
+
+# Maximum amplifier A = 1 + Σ(bonuses) allowed per domain.
+AMPLIFIER_CAP = 1.6
 
 # Critical thresholds -> final score capped at CRITICAL_CAP if any breached.
 CRITICAL = {
@@ -66,10 +112,6 @@ CRITICAL_CAP = 300
 # Score -> band label (ordered high to low; first threshold met wins).
 BAND_LABELS = [(800, "Excellent"), (650, "Good"), (500, "Fair"), (350, "Poor"), (0, "Critical")]
 
-# Product toggle (BRD note §8): if True, chronic disease becomes a multiplier on
-# the (1000 - clinical_deductions) subtotal instead of a flat 200-point deduction.
-# Left False by design; the chronic layer is an additive Charlson penalty.
-CHRONIC_AS_MULTIPLIER = False
 
 
 def band_fraction(value, table) -> float:

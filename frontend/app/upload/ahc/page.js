@@ -4,7 +4,7 @@ import RequireRole from "../../lib/RequireRole";
 import Header from "../../lib/Header";
 import UploadWorkspace from "../../lib/UploadWorkspace";
 
-// AHC health-check dataset — uploaded by Employer. One row per employee.
+// AHC health-check dataset — uploaded by Health Provider. One row per employee across all companies.
 const REQUIRED_COLUMNS = [
   "company_id",
   "employee_id",
@@ -22,7 +22,7 @@ const REQUIRED_COLUMNS = [
 
 export default function AHCUploadPage() {
   return (
-    <RequireRole role="employer">
+    <RequireRole role="provider">
       <Header />
       <UploadWorkspace
         kind="ahc"

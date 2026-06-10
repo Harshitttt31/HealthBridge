@@ -86,24 +86,32 @@ export async function processData(token) {
   return apiFetch("/process", { method: "POST", token });
 }
 
+// GET /results/companies -> { companies: [{company_id, company_name}] }
+// Returns all companies that have processed results. Used by the provider dropdown.
+export async function getCompanies(token) {
+  return apiFetch("/results/companies", { token });
+}
+
 // GET /results/groups -> { company_id, company_name, processed, cohort_count, cohorts }
-// Company is derived from the JWT, so no companyId argument is needed.
-export async function getGroups(token) {
-  return apiFetch("/results/groups", { token });
+// HR: company derived from JWT. Provider: must pass companyId.
+export async function getGroups(token, companyId) {
+  const qs = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
+  return apiFetch(`/results/groups${qs}`, { token });
 }
 
 // GET /results/summary -> flat company rollup (avg_health_score, avg_cost_per_head_inr,
 // band_distribution, quadrants, score_axis, cost_axis, employees_covered, ...).
-export async function getSummary(token) {
-  return apiFetch("/results/summary", { token });
+// HR: company derived from JWT. Provider: must pass companyId.
+export async function getSummary(token, companyId) {
+  const qs = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
+  return apiFetch(`/results/summary${qs}`, { token });
 }
 
 // --- demo credentials -------------------------------------------------------
-// Seeded by `python -m app.seed` (hr@<company>.demo / employer@<company>.demo,
-// password demo1234). A small subset is surfaced as one-click demo logins.
+// Seeded by `python -m app.seed`. HR accounts are per-company; one provider
+// account covers all companies (uploads the full AHC dataset).
 export const DEMO_CREDENTIALS = [
   { email: "hr@jpm001.demo", password: "demo1234", role: "hr" },
-  { email: "employer@jpm001.demo", password: "demo1234", role: "employer" },
   { email: "hr@tcs001.demo", password: "demo1234", role: "hr" },
-  { email: "employer@tcs001.demo", password: "demo1234", role: "employer" },
+  { email: "provider@hclhealth.demo", password: "demo1234", role: "provider" },
 ];
