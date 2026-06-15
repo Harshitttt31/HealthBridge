@@ -1,0 +1,3 @@
+# De-identified upload store — never commit data.
+*
+!.gitignore
