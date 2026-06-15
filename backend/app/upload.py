@@ -24,7 +24,7 @@ from app.models import Role, Upload, UploadKind, UploadStatus
 _log = logging.getLogger(__name__)
 from app.pipeline import (
     AHC_IDENTIFIERS, AHC_NOISE_COLS, HRMS_IDENTIFIERS, HRMS_NOISE_COLS,
-    step1_deidentify, step2_noise, step3_tokenize,
+    has_hra_columns, split_hra, step1_deidentify, step2_noise, step3_tokenize,
 )
 from app.pipeline.companies import COMPANY_ID
 from app.storage import save_deident
@@ -97,10 +97,13 @@ async def _handle_upload_hrms(file: UploadFile, user: CurrentUser,
 
 
 async def _handle_upload_ahc(file: UploadFile, session: Session) -> dict:
-    """AHC upload: provider uploads data for all companies in one file.
+    """AHC upload: provider uploads data for all companies in one combined file.
 
-    Splits by company_id and stores each slice independently so /process can
-    pair each company's AHC with its HRMS upload.
+    Option 2 (provider-captured HRA): the questionnaire rides in on the same
+    file. Per company slice we de-identify + tokenise, then `split_hra` separates
+    the clinical half (stored as UploadKind.ahc) from the questionnaire half
+    (stored as UploadKind.hra — engine-only, consented rows only). /process then
+    pairs each company's AHC with its HRMS upload and folds in the HRA.
     """
     raw = await file.read()
     df, result = validate(raw, file.filename or "upload", UploadKind.ahc)
@@ -114,9 +117,12 @@ async def _handle_upload_ahc(file: UploadFile, session: Session) -> dict:
                             detail=result.as_dict())
 
     identifiers, noise_cols = _CONFIG[UploadKind.ahc]
+    file_has_hra = has_hra_columns(df)
 
     rows_stored = 0
+    hra_rows_stored = 0
     companies_stored: list[str] = []
+    hra_companies: list[str] = []
     notes = list(result.warnings)
 
     for company_id, slice_df in df.groupby(COMPANY_ID):
@@ -124,22 +130,43 @@ async def _handle_upload_ahc(file: UploadFile, session: Session) -> dict:
         s = step1_deidentify(slice_df.copy(), identifiers)
         s = step2_noise(s, noise_cols)
         s = step3_tokenize(s)
-        s = s.drop(columns=[c for c in ["employee_id"] if c in s.columns])
-        save_deident(company_id, UploadKind.ahc, s)
-        rows_stored += len(s)
+
+        # Split the questionnaire half off the tokenised frame (Stage 2/3).
+        clinical, hra, _ = split_hra(s)
+        clinical = clinical.drop(columns=[c for c in ["employee_id"] if c in clinical.columns])
+        save_deident(company_id, UploadKind.ahc, clinical)
+        rows_stored += len(clinical)
         companies_stored.append(company_id)
 
         up = Upload(company_id=company_id, kind=UploadKind.ahc,
                     status=UploadStatus.received, filename=file.filename,
-                    row_count=len(s), message=result.message)
+                    row_count=len(clinical), message=result.message)
         session.add(up)
 
+        if hra is not None and len(hra):
+            # Engine-only questionnaire store: token-keyed, no employee_id.
+            save_deident(company_id, UploadKind.hra, hra)
+            hra_rows_stored += len(hra)
+            hra_companies.append(company_id)
+            session.add(Upload(
+                company_id=company_id, kind=UploadKind.hra,
+                status=UploadStatus.received, filename=file.filename,
+                row_count=len(hra),
+                message="HRA questionnaire (captured with consent)"))
+
     session.commit()
+
+    if file_has_hra and hra_rows_stored == 0:
+        notes.append("HRA columns were present but no rows had consent on record.")
+    elif not file_has_hra:
+        notes.append("No HRA questionnaire columns found — scores will be LABS-ONLY.")
 
     return {
         "kind": UploadKind.ahc.value,
         "companies_stored": companies_stored,
         "rows_stored": rows_stored,
+        "hra_rows_stored": hra_rows_stored,
+        "hra_companies": hra_companies,
         "warnings": notes,
     }
 

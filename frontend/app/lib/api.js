@@ -70,9 +70,12 @@ export async function getMe(token) {
 // --- uploads ----------------------------------------------------------------
 // POST /upload/{ahc|hrms} (multipart). Backend validates the schema, isolates
 // to the caller's company, runs de-identify→noise→tokenize, and stores the set.
-// Returns { upload_id, kind, company_id, rows_stored, rows_dropped_other_company,
-//           warnings }. On schema failure it throws an Error whose `.detail`
-// carries { missing_required, missing_expected, company_ids, message, ... }.
+// AHC is a combined AHC+HRA file: the consented questionnaire half is split into
+// an engine-only store, so the AHC response also carries
+// { hra_rows_stored, hra_companies }. Returns
+// { kind, companies_stored | company_id, rows_stored, warnings, ... }. On schema
+// failure it throws an Error whose `.detail` carries
+// { missing_required, missing_expected, company_ids, message, ... }.
 export async function uploadFile(kind, file, token) {
   const form = new FormData();
   form.append("file", file);
@@ -100,8 +103,10 @@ export async function getGroups(token, companyId) {
 }
 
 // GET /results/summary -> flat company rollup (avg_health_score, avg_cost_per_head_inr,
-// band_distribution, quadrants, score_axis, cost_axis, employees_covered, ...).
-// HR: company derived from JWT. Provider: must pass companyId.
+// hra_coverage_pct, band_distribution, quadrants, score_axis, cost_axis,
+// employees_covered, ...). avg_health_score is the 3-pillar composite; each cohort
+// in /results/groups also carries hra_coverage_pct and pillars {clinical,
+// behavioural, future}. HR: company derived from JWT. Provider: must pass companyId.
 export async function getSummary(token, companyId) {
   const qs = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
   return apiFetch(`/results/summary${qs}`, { token });

@@ -109,11 +109,13 @@ def results_summary(user: CurrentUser = Depends(get_current_user),
     }
     if not cohorts or total == 0:
         return {**base, "avg_health_score": 0, "avg_cost_per_head_inr": 0,
+                "hra_coverage_pct": 0,
                 "band_distribution": {b: 0.0 for b in BANDS}, "quadrants": {},
                 "score_axis": SCORE_AXIS, "cost_axis": 0}
 
     avg_score = sum(c["group_health_score"] * c["n"] for c in cohorts) / total
     avg_cost = sum(c.get("cost_per_head_inr", 0) * c["n"] for c in cohorts) / total
+    hra_coverage = sum(c.get("hra_coverage_pct", 0) * c["n"] for c in cohorts) / total
 
     band_dist = {}
     for b in BANDS:
@@ -131,6 +133,7 @@ def results_summary(user: CurrentUser = Depends(get_current_user),
         **base,
         "avg_health_score": round(avg_score, 1),
         "avg_cost_per_head_inr": round(avg_cost),
+        "hra_coverage_pct": round(hra_coverage, 1),
         "band_distribution": band_dist,
         "quadrants": quadrants,
         "score_axis": SCORE_AXIS,

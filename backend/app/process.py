@@ -18,7 +18,10 @@ from app.auth import CurrentUser, get_current_user
 from app.db import get_session
 from app.grouping.mondrian import age_band, mondrian
 from app.models import GroupResult, Upload, UploadKind, UploadStatus
-from app.pipeline import aggregate_hrms_to_employee, step4_combine, step5_release
+from app.pipeline import (
+    HRA_FIELDS, aggregate_hrms_to_employee, apply_three_pillar, step4_combine,
+    step5_release,
+)
 from app.pipeline.companies import COMPANY_NAMES
 from app.scoring.health_index import score_dataframe
 from app.storage import has_deident, load_deident
@@ -26,26 +29,39 @@ from app.storage import has_deident, load_deident
 router = APIRouter(tags=["process"])
 
 # AHC columns carried into the join (scores + grouping inputs, no identifiers).
+# Pillar sub-scores + completeness tier ride along; raw HRA never does.
 _AHC_KEEP_BASE = ["company_id", "token", "age", "sex", "chronic_disease",
-                  "health_index", "health_band", "critical_flag"]
+                  "health_index", "health_band", "critical_flag",
+                  "pillar_clinical", "pillar_behavioural", "pillar_future",
+                  "completeness_tier"]
 
 
 def _run_company(company_id: str) -> dict:
     """Full in-memory pipeline for one company; returns the released payload."""
     ahc = load_deident(company_id, UploadKind.ahc)
     hrms = load_deident(company_id, UploadKind.hrms)
+    hra = (load_deident(company_id, UploadKind.hra)
+           if has_deident(company_id, UploadKind.hra) else None)
 
-    # Score AHC, keep only what the join/grouping needs.
+    # Score AHC (clinical pillar), then fold in the HRA -> three-pillar composite
+    # with a completeness tier. apply_three_pillar consumes the raw HRA and never
+    # attaches it; keep only what the join/grouping needs afterwards.
     ahc = score_dataframe(ahc)
+    ahc = apply_three_pillar(ahc, hra)
     keep = [c for c in _AHC_KEEP_BASE if c in ahc.columns] + \
            [c for c in ahc.columns if c.startswith("domain__")]
     ahc = ahc[keep]
+    leaked_hra = [c for c in HRA_FIELDS if c in ahc.columns]
+    if leaked_hra:
+        raise RuntimeError(f"raw HRA leaked past scoring: {leaked_hra}")
 
     # Aggregate HRMS claims to employee level, then Step 4 join (drops token).
     hrms_emp = aggregate_hrms_to_employee(hrms)
     combined = step4_combine(ahc, hrms_emp)
     if "token" in combined.columns or "employee_id" in combined.columns:
         raise RuntimeError("token/employee_id leaked past Step 4")
+    if any(c in combined.columns for c in HRA_FIELDS):
+        raise RuntimeError("raw HRA leaked into the combined table")
     if combined.empty:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="No AHC/HRMS records matched on token.")

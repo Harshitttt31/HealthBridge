@@ -28,6 +28,12 @@ from app.pipeline.step2_noise import (
 from app.pipeline.step3_tokenize import step3_tokenize
 from app.pipeline.step4_combine import aggregate_hrms_to_employee, step4_combine
 from app.pipeline.step5_release import enforce_k, step5_release
+from app.pipeline.hra import (
+    HRA_FIELDS,
+    apply_three_pillar,
+    has_hra_columns,
+    split_hra,
+)
 
 __all__ = [
     "COMPANY_ID", "COMPANY_KEY_SRC", "COMPANY_NAMES",
@@ -37,4 +43,5 @@ __all__ = [
     "step3_tokenize",
     "aggregate_hrms_to_employee", "step4_combine",
     "enforce_k", "step5_release",
+    "HRA_FIELDS", "apply_three_pillar", "has_hra_columns", "split_hra",
 ]

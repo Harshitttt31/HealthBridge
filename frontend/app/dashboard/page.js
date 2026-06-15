@@ -230,10 +230,15 @@ function DashboardContent({ companyId }) {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatTile label="Avg health score" value={summary.avg_health_score} sub="/ 1000" />
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <StatTile label="Avg health score" value={summary.avg_health_score} sub="/ 1000 · 3-pillar" />
         <StatTile label="Employees" value={summary.employees_covered.toLocaleString()} sub={`${summary.cohort_count} cohorts`} />
         <StatTile label="Avg cost / head" value={inr(summary.avg_cost_per_head_inr)} sub="OPD + IPD claims" />
+        <StatTile
+          label="HRA coverage"
+          value={`${summary.hra_coverage_pct ?? 0}%`}
+          sub="complete profiles"
+        />
         <StatTile
           label="Priority cohorts"
           value={safeCohorts.filter((c) => c.quadrant === "Priority").length}

@@ -29,6 +29,7 @@ class Role(str, Enum):
 class UploadKind(str, Enum):
     ahc = "ahc"
     hrms = "hrms"
+    hra = "hra"      # questionnaire half of the combined AHC+HRA upload; engine-only
 
 
 class UploadStatus(str, Enum):

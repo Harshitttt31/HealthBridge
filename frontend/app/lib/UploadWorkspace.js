@@ -21,6 +21,8 @@ export default function UploadWorkspace({
   description,
   accept = ".csv,.xlsx",
   requiredColumns = [],
+  optionalColumns = [],
+  optionalLabel = "Optional columns",
   companyKey,
 }) {
   const { auth } = useAuth();
@@ -102,6 +104,14 @@ export default function UploadWorkspace({
 
   const hasCompanyKey = header ? headerHasCompanyKey : null;
 
+  // Optional columns are non-blocking: present them as a separate, informational
+  // checklist so the uploader can see what enrichment (e.g. HRA) was detected.
+  const optionalStatus =
+    header && optionalColumns.length
+      ? optionalColumns.map((col) => ({ col, present: header.includes(col) }))
+      : null;
+  const optionalDetected = optionalStatus?.some((c) => c.present);
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-xl font-semibold text-ink-900">{title}</h1>
@@ -170,6 +180,28 @@ export default function UploadWorkspace({
               </li>
             ))}
           </ul>
+          {optionalStatus && (
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <p className="mb-2 text-xs font-medium text-slate-600">
+                {optionalLabel}{" "}
+                {optionalDetected ? (
+                  <span className="text-green-700">— detected</span>
+                ) : (
+                  <span className="text-slate-400">— not detected (LABS-ONLY)</span>
+                )}
+              </p>
+              <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                {optionalStatus.map(({ col, present }) => (
+                  <li key={col} className="flex items-center gap-2">
+                    <span className={present ? "text-green-600" : "text-slate-300"}>
+                      {present ? "✓" : "○"}
+                    </span>
+                    <span className="font-mono text-xs text-gray-600">{col}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="mt-3 text-xs text-gray-400">
             Header preview is best-effort (CSV only). The backend performs the
             authoritative validation on upload.
@@ -229,6 +261,12 @@ export default function UploadWorkspace({
             <p className="text-xs text-slate-600">
               {result.rows_dropped_other_company.toLocaleString()} row(s) for other
               companies were dropped (isolation).
+            </p>
+          )}
+          {result.hra_rows_stored > 0 && (
+            <p className="text-xs text-slate-600">
+              {result.hra_rows_stored.toLocaleString()} consented HRA questionnaire
+              row(s) stored to the engine-only store.
             </p>
           )}
           {result.warnings?.length > 0 && (

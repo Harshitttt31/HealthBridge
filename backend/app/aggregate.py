@@ -30,6 +30,25 @@ def _weakest_domains(cohort: pd.DataFrame, k: int = 3) -> list[dict]:
     return [{"domain": d, "score": s} for d, s in worst]
 
 
+def _hra_coverage(cohort: pd.DataFrame) -> float:
+    """% of the cohort scored with a complete (AHC + consented HRA) profile."""
+    if "completeness_tier" not in cohort.columns or not len(cohort):
+        return 0.0
+    return round(100 * float((cohort["completeness_tier"] == "COMPLETE").mean()), 1)
+
+
+def _mean_pillar(cohort: pd.DataFrame, col: str) -> float | None:
+    """Cohort mean of a 0..1 pillar as a 0..100 score; None if unavailable.
+
+    behavioural is NaN for labs-only rows, so the mean skips them (pandas default)
+    and is None only when every row is labs-only.
+    """
+    if col not in cohort.columns:
+        return None
+    m = cohort[col].mean()
+    return None if pd.isna(m) else round(100 * float(m), 1)
+
+
 def _chronic_prevalence(cohort: pd.DataFrame) -> list[dict]:
     """% with each chronic condition; suppress any affecting < MIN_GROUP employees."""
     if "chronic_disease" not in cohort.columns:
@@ -107,6 +126,12 @@ def aggregate_company(cohorts: list[pd.DataFrame], company_id: str, company_name
             "claims": claims,
             "cost_per_head_inr": round(cost_per_head),
             "quadrant": _quadrant(score, cost_per_head, score_thr, cost_thr),
+            "hra_coverage_pct": _hra_coverage(c),
+            "pillars": {
+                "clinical": _mean_pillar(c, "pillar_clinical"),
+                "behavioural": _mean_pillar(c, "pillar_behavioural"),
+                "future": _mean_pillar(c, "pillar_future"),
+            },
         })
 
     records.sort(key=lambda r: r["group_health_score"])
@@ -121,6 +146,9 @@ def aggregate_company(cohorts: list[pd.DataFrame], company_id: str, company_name
         ) if total_emp else 0,
         "avg_cost_per_head_inr": round(
             sum(r["cost_per_head_inr"] * r["n"] for r in records) / total_emp
+        ) if total_emp else 0,
+        "hra_coverage_pct": round(
+            sum(r["hra_coverage_pct"] * r["n"] for r in records) / total_emp, 1
         ) if total_emp else 0,
         "score_axis": score_thr,
         "cost_axis": round(cost_thr),

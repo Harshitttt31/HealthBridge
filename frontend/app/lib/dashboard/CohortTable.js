@@ -10,12 +10,14 @@ const COLUMNS = [
   { key: "cost_per_head_inr", label: "Cost/head", align: "right" },
   { key: "claims_per_employee", label: "Claims/emp", align: "right" },
   { key: "avg_absenteeism_pct", label: "Absent%", align: "right" },
+  { key: "hra_coverage_pct", label: "HRA cov%", align: "right" },
   { key: "quadrant", label: "Quadrant", align: "left" },
 ];
 
 function valueFor(c, key) {
   if (key === "claims_per_employee") return c.claims?.claims_per_employee ?? 0;
   if (key === "avg_absenteeism_pct") return c.claims?.avg_absenteeism_pct ?? 0;
+  if (key === "hra_coverage_pct") return c.hra_coverage_pct ?? 0;
   return c[key];
 }
 
@@ -84,6 +86,9 @@ export default function CohortTable({ cohorts }) {
                   </td>
                   <td className="px-4 py-2.5 text-right text-slate-600">
                     {c.claims?.avg_absenteeism_pct}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-600">
+                    {c.hra_coverage_pct ?? 0}%
                   </td>
                   <td className="px-4 py-2.5">
                     <span

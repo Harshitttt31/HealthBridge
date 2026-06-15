@@ -36,7 +36,7 @@ export default function CohortCard({ cohort }) {
         <BandBar distribution={cohort.band_distribution} />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+      <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
         <div>
           <p className="text-slate-400">Cost / head</p>
           <p className="font-medium text-ink-900">{inr(cohort.cost_per_head_inr)}</p>
@@ -45,7 +45,28 @@ export default function CohortCard({ cohort }) {
           <p className="text-slate-400">Absenteeism</p>
           <p className="font-medium text-ink-900">{cohort.claims?.avg_absenteeism_pct}%/mo</p>
         </div>
+        <div>
+          <p className="text-slate-400">HRA coverage</p>
+          <p className="font-medium text-ink-900">{cohort.hra_coverage_pct ?? 0}%</p>
+        </div>
       </div>
+
+      {cohort.pillars && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs text-slate-400">Score pillars (0–100)</p>
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-600">
+              Clinical <span className="text-slate-400">{cohort.pillars.clinical ?? "—"}</span>
+            </span>
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-600">
+              Behavioural <span className="text-slate-400">{cohort.pillars.behavioural ?? "—"}</span>
+            </span>
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-600">
+              Future <span className="text-slate-400">{cohort.pillars.future ?? "—"}</span>
+            </span>
+          </div>
+        </div>
+      )}
 
       {cohort.weakest_domains?.length > 0 && (
         <div className="mt-4">
